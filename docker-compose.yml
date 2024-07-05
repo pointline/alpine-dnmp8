@@ -1,0 +1,177 @@
+services:
+  ### Nginx Web Container ###
+  nginx:
+    build: ./core/images/nginx
+    container_name: nginx
+    volumes:
+      - type: bind
+        source: ./www
+        target: /var/www/html
+      - ./core/conf/nginx/conf/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./core/conf/nginx/conf/conf.d:/etc/nginx/conf.d:ro
+      - ./web-conf:/etc/nginx/web-conf:ro
+      - ./logs/nginx/log:/var/log/nginx:rw
+      - type: bind
+        source: ./share-files
+        target: /var/www/share-files
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: always
+    networks:
+      - net-all
+
+  ### PHP FPM Container ###
+  php81:
+    build: ./core/images/php81
+    container_name: php81
+    volumes:
+      - type: bind
+        source: ./www
+        target: /var/www/html
+      - ./core/conf/php81/conf/php.ini-development:/usr/local/etc/php/php.ini:ro
+      - ./core/conf/php81/conf/php-fpm.conf:/usr/local/etc/php-fpm.conf:ro
+      - ./core/conf/php81/conf/php-fpm.d/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+      # - type: bind
+        # source: ../.ssh
+        # target: /root/.ssh
+      - type: bind
+        source: ./share-files
+        target: /var/www/share-files
+    expose:
+      - "9000"
+    restart: always
+    networks:
+      - net-all
+
+  ### Mariadb Container ###
+  # mariadb:
+  #   build: ./core/images/mariadb
+  #   container_name: mariadb
+  #   volumes:
+  #     # - type: volume
+  #     #   source: data-mariadb
+  #     #   target: /var/lib/mysql
+  #     #   volume:
+  #     #     nocopy: true
+  #     # - ./core/conf/mysql/conf/my.cnf:/etc/mysql/my.cnf:ro
+  #     - type: bind
+  #       source: ./share-files
+  #       target: /var/www/share-files
+  #   ports:
+  #     - "3306:3306"
+  #   restart: always
+  #   environment:
+  #     MARIADB_ROOT_PASSWORD: 123456
+  #   networks:
+  #     - net-all
+
+  ### Mysql8.0 Container ###
+  mysql80:
+    build: ./core/images/mysql80
+    container_name: mysql80
+    volumes:
+      - type: volume
+        source: data-mysql80
+        target: /var/lib/mysql
+        volume:
+          nocopy: true
+      # - ./core/conf/mysql/conf/my.cnf:/etc/mysql/my.cnf:ro
+      - type: bind
+        source: ./share-files
+        target: /var/www/share-files
+    ports:
+      - "3306:3306"
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+    networks:
+      - net-all
+
+  ### OpenSearch Container ###
+  # opensearch:
+  #   build: ./core/images/opensearch
+  #   container_name: opensearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - bootstrap.memory_lock=true
+  #     - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   volumes:
+  #     - data-opensearch:/usr/share/opensearch/data
+  #   ports:
+  #     - "9200:9200"
+  #   restart: always
+  #   networks:
+  #     - net-all
+
+  ### Elasticsearch Container ###
+  elasticsearch:
+    build: ./core/images/elasticsearch
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      # - bootstrap.memory_lock=true
+      # - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data-elasticsearch:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    restart: always
+    networks:
+      - net-all
+
+  ### Redis Container ###
+  redis:
+    build: ./core/images/redis
+    container_name: redis
+    volumes:
+      - data-redis:/data
+    ports:
+      - "6379:6379"
+    restart: always
+    networks:
+      - net-all
+
+  ### Rabbitmq Container ###
+  rabbitmq:
+    build: ./core/images/rabbitmq
+    container_name: rabbitmq
+    volumes:
+      - data-rabbitmq:/data
+    ports:
+      - "15672:15672"
+      - "5672:5672"
+    restart: always
+    environment:
+      - RABBITMQ_DEFAULT_USER=root
+      - RABBITMQ_DEFAULT_PASS=123456
+    networks:
+      - net-all
+
+### Networks ###
+networks:
+  net-all:
+    driver: bridge
+
+### Volumes ###
+volumes:
+  data-mariadb:
+    driver: local
+  data-mysql80:
+    driver: local
+  data-redis:
+    driver: local
+  data-rabbitmq:
+    driver: local
+  data-opensearch:
+    driver: local
+  data-elasticsearch:
+    driver: local

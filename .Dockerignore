@@ -1,0 +1,12 @@
+.DS_Store
+.idea
+.vscode
+.gitignore
+README.md
+LICENSE
+share-files
+core
+other
+web-conf
+www
+logs

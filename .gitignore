@@ -1,0 +1,4 @@
+www/*
+logs/nginx
+share-files/*
+web-conf/*
