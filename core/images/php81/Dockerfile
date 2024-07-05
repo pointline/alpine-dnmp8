@@ -1,5 +1,5 @@
-# FROM php:8.1.29-fpm-alpine
-FROM php:8.0.30-fpm-alpine
+FROM php:8.1.29-fpm-alpine
+#FROM php:8.0.30-fpm-alpine
 
 LABEL author="peter@xulukun.cn"
 
