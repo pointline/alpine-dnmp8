@@ -3,6 +3,10 @@ FROM php:8.1.29-fpm-alpine
 
 LABEL author="peter@xulukun.cn"
 
+# 修改源文件
+RUN echo 'https://dl-cdn.alpinelinux.org/alpine/v3.19/main' > /etc/apk/repositories \
+    && echo 'https://dl-cdn.alpinelinux.org/alpine/v3.19/community' >> /etc/apk/repositories
+
 # 安装 PHP 依赖
 RUN apk add --no-cache curl icu-dev libzip-dev oniguruma-dev autoconf build-base freetype-dev libjpeg-turbo-dev libpng-dev libxml2-dev libxslt-dev icu-data-full
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg

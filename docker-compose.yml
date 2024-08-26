@@ -108,22 +108,46 @@ services:
   #   networks:
   #     - net-all
 
-  ### Elasticsearch Container ###
-  elasticsearch:
-    build: ./core/images/elasticsearch
-    container_name: elasticsearch
+  ### Elasticsearch7 Container ###
+  # elasticsearch:
+  #   build: ./core/images/elasticsearch
+  #   container_name: elasticsearch
+  #   environment:
+  #     - discovery.type=single-node
+  #     - bootstrap.memory_lock=true
+  #     - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+  #   mem_limit: 2g
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   volumes:
+  #     - data-elasticsearch:/usr/share/elasticsearch/data
+  #   ports:
+  #     - "9200:9200"
+  #   restart: always
+  #   networks:
+  #     - net-all
+
+  ### Elasticsearch8 Container ###
+  elasticsearch8:
+    build: ./core/images/elasticsearch8
+    container_name: elasticsearch8
     environment:
       - discovery.type=single-node
-      # - bootstrap.memory_lock=true
-      # - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+      - bootstrap.memory_lock=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - xpack.security.enabled=false
+    mem_limit: 2g
     ulimits:
       memlock:
         soft: -1
         hard: -1
     volumes:
-      - data-elasticsearch:/usr/share/elasticsearch/data
+      - data-elasticsearch8:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
+      - "9300:9300"
     restart: always
     networks:
       - net-all
@@ -174,4 +198,6 @@ volumes:
   data-opensearch:
     driver: local
   data-elasticsearch:
+    driver: local
+  data-elasticsearch8:
     driver: local
