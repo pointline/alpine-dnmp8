@@ -109,20 +109,21 @@ services:
   #     - net-all
 
   ### Elasticsearch7 Container ###
-  # elasticsearch:
+  # elasticsearch7:
   #   build: ./core/images/elasticsearch
-  #   container_name: elasticsearch
+  #   container_name: elasticsearch7
   #   environment:
   #     - discovery.type=single-node
   #     - bootstrap.memory_lock=true
   #     - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+  #     - xpack.security.enabled=false
   #   mem_limit: 2g
   #   ulimits:
   #     memlock:
   #       soft: -1
   #       hard: -1
   #   volumes:
-  #     - data-elasticsearch:/usr/share/elasticsearch/data
+  #     - data-elasticsearch7:/usr/share/elasticsearch/data
   #   ports:
   #     - "9200:9200"
   #   restart: always
@@ -147,7 +148,7 @@ services:
       - data-elasticsearch8:/usr/share/elasticsearch/data
     ports:
       - "9200:9200"
-      - "9300:9300"
+      # - "9300:9300"
     restart: always
     networks:
       - net-all
@@ -197,7 +198,7 @@ volumes:
     driver: local
   data-opensearch:
     driver: local
-  data-elasticsearch:
+  data-elasticsearch7:
     driver: local
   data-elasticsearch8:
     driver: local
