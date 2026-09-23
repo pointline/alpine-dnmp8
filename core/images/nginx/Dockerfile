@@ -1,3 +1,3 @@
-FROM nginx:1.27.0-alpine
+FROM nginx:1.31.6-alpine
 
 LABEL author="peter@xulukun.cn"

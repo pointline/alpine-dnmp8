@@ -1,101 +1,221 @@
+# docker-compose.optimized.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# 基于 docker-compose.yml 的修订版，逐项修复见 docker-compose.review.md
+# 使用：docker compose -f docker-compose.optimized.yml up -d
+# 前置：mkdir -p share-files && touch share-files/.gitkeep
+# 定位：本地开发环境。口令按原始设计硬编码（123456），不使用 .env 变量。
+#       该文件（含 docker-compose.yml）请勿推送到公开仓库。
+# ─────────────────────────────────────────────────────────────────────────────
+name: alpine-dnmp8
+
+x-logging: &default-logging          # 统一日志上限，避免 json-file 无界增长
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   ### Nginx Web Container ###
   nginx:
     build: ./core/images/nginx
-    container_name: nginx
+    # nginx 启动时会解析 upstream 主机名，php82 未注册到 Docker DNS 会直接 [emerg] 退出，
+    # 因此显式声明启动顺序（不再依赖 restart 策略反复试错）
+    depends_on:
+      php82:
+        condition: service_started
     volumes:
-      - type: bind
-        source: ./www
-        target: /var/www/html
+      - ./www:/var/www/html:ro                      # nginx 只读，写入由 php82 负责
       - ./core/conf/nginx/conf/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./core/conf/nginx/conf/conf.d:/etc/nginx/conf.d:ro
       - ./web-conf:/etc/nginx/web-conf:ro
-      - ./logs/nginx/log:/var/log/nginx:rw
-      - type: bind
-        source: ./share-files
-        target: /var/www/share-files
+      # 不挂载 /var/log/nginx：保留镜像内指向 /dev/stdout|/dev/stderr 的软链接，
+      # 日志走容器 stdio（docker compose logs -f nginx），由 logging driver 负责存储与轮转
+      - ./share-files:/var/www/share-files:ro
     ports:
       - "80:80"
-      - "443:443"
-    restart: always
+      # - "443:443"   # 容器内尚无 TLS server 块与证书，先不发布；配置后取消注释
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    logging: *default-logging
     networks:
       - net-all
 
   ### PHP FPM Container ###
-  php81:
-    build: ./core/images/php81
-    container_name: php81
+  php82:
+    build: ./core/images/php82
     volumes:
-      - type: bind
-        source: ./www
-        target: /var/www/html
-      - ./core/conf/php81/conf/php.ini-development:/usr/local/etc/php/php.ini:ro
-      - ./core/conf/php81/conf/php-fpm.conf:/usr/local/etc/php-fpm.conf:ro
-      - ./core/conf/php81/conf/php-fpm.d/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
+      - ./www:/var/www/html
+      # 开发环境用 -development（display_errors=On / memory_limit=2G）；
+      # 对外环境请切到 php.ini-production
+      - ./core/conf/php82/conf/php.ini-development:/usr/local/etc/php/php.ini:ro
+      - ./core/conf/php82/conf/php-fpm.conf:/usr/local/etc/php-fpm.conf:ro
+      - ./core/conf/php82/conf/php-fpm.d/www.conf:/usr/local/etc/php-fpm.d/www.conf:ro
       # - type: bind
-        # source: ../.ssh
-        # target: /root/.ssh
-      - type: bind
-        source: ./share-files
-        target: /var/www/share-files
+      #   source: ../.ssh
+      #   target: /root/.ssh
+      - ./share-files:/var/www/share-files
     expose:
-      - "9000"
-    restart: always
+      - "9000"                                       # 仅作文档用途，服务名已可互通
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 9000 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    logging: *default-logging
     networks:
       - net-all
-
-  ### Mariadb Container ###
-  # mariadb:
-  #   build: ./core/images/mariadb
-  #   container_name: mariadb
-  #   volumes:
-  #     # - type: volume
-  #     #   source: data-mariadb
-  #     #   target: /var/lib/mysql
-  #     #   volume:
-  #     #     nocopy: true
-  #     # - ./core/conf/mysql/conf/my.cnf:/etc/mysql/my.cnf:ro
-  #     - type: bind
-  #       source: ./share-files
-  #       target: /var/www/share-files
-  #   ports:
-  #     - "3306:3306"
-  #   restart: always
-  #   environment:
-  #     MARIADB_ROOT_PASSWORD: 123456
-  #   networks:
-  #     - net-all
 
   ### Mysql8.0 Container ###
   mysql80:
     build: ./core/images/mysql80
-    container_name: mysql80
     volumes:
       - type: volume
         source: data-mysql80
         target: /var/lib/mysql
         volume:
-          nocopy: true
+          nocopy: true                               # 正确：避免镜像空目录覆盖初始化
       # - ./core/conf/mysql/conf/my.cnf:/etc/mysql/my.cnf:ro
-      - type: bind
-        source: ./share-files
-        target: /var/www/share-files
+      - ./share-files:/var/www/share-files
     ports:
-      - "3306:3306"
-    restart: always
+      # 仅宿主机可访问；若宿主已占用 3306，改为 "127.0.0.1:3307:3306"
+      - "127.0.0.1:3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_ROOT_PASSWORD: "123456"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    logging: *default-logging
     networks:
       - net-all
+
+  ### Elasticsearch7 Container ###
+  elasticsearch7:
+    build: ./core/images/elasticsearch
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - data-elasticsearch7:/usr/share/elasticsearch/data
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - net-all
+
+  ### Redis Container ###
+  redis:
+    build: ./core/images/redis
+    # 保持镜像默认启动参数（无 AUTH、默认 RDB 持久化）。
+    # 如需开启认证或限制内存，取消下面注释（本地开发用固定口令）：
+    # command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --requirepass 123456
+    volumes:
+      - data-redis:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - net-all
+
+  ### Rabbitmq Container ###
+  rabbitmq:
+    build: ./core/images/rabbitmq
+    volumes:
+      - data-rabbitmq:/var/lib/rabbitmq                # 修复：原为 /data，mnesia 数据实际未持久化
+    ports:
+      # - "127.0.0.1:15672:15672"
+      - "127.0.0.1:5672:5672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=root
+      - RABBITMQ_DEFAULT_PASS=123456
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging: *default-logging
+    networks:
+      - net-all
+
+  ### ── 备用组件：默认不启动，docker compose --profile extra up -d 启用 ── ###
+  ### MariaDB Container ###
+  # mariadb:
+  #   build: ./core/images/mariadb
+  #   profiles: ["extra"]
+  #   volumes:
+  #     - data-mariadb:/var/lib/mysql
+  #     - ./share-files:/var/www/share-files
+  #   ports:
+  #     - "127.0.0.1:3307:3306"                        # 与 mysql80 的 3306 错开
+  #   environment:
+  #     MARIADB_ROOT_PASSWORD: "123456"
+  #   restart: unless-stopped
+  #   logging: *default-logging
+  #   networks:
+  #     - net-all
+
+  ### Elasticsearch8 Container ###
+  # elasticsearch8:
+  #   build: ./core/images/elasticsearch8
+  #   profiles: ["extra"]
+  #   environment:
+  #     - discovery.type=single-node
+  #     - bootstrap.memory_lock=true
+  #     - "ES_JAVA_OPTS=-Xms1g -Xmx1g"
+  #     - xpack.security.enabled=false
+  #   mem_limit: 3g
+  #   ulimits:
+  #     memlock:
+  #       soft: -1
+  #       hard: -1
+  #   volumes:
+  #     - data-elasticsearch8:/usr/share/elasticsearch/data
+  #   ports:
+  #     - "127.0.0.1:9201:9200"                        # 与 elasticsearch7 的 9200 错开
+  #   restart: unless-stopped
+  #   logging: *default-logging
+  #   networks:
+  #     - net-all
 
   ### OpenSearch Container ###
   # opensearch:
   #   build: ./core/images/opensearch
-  #   container_name: opensearch
+  #   profiles: ["extra"]
   #   environment:
   #     - discovery.type=single-node
   #     - bootstrap.memory_lock=true
-  #     - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"
+  #     - "OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m"     # OpenSearch 用这个变量名
   #   ulimits:
   #     memlock:
   #       soft: -1
@@ -103,83 +223,11 @@ services:
   #   volumes:
   #     - data-opensearch:/usr/share/opensearch/data
   #   ports:
-  #     - "9200:9200"
-  #   restart: always
+  #     - "127.0.0.1:9202:9200"                        # 与两个 ES 实例错开
+  #   restart: unless-stopped
+  #   logging: *default-logging
   #   networks:
   #     - net-all
-
-  ### Elasticsearch7 Container ###
-  # elasticsearch7:
-  #   build: ./core/images/elasticsearch
-  #   container_name: elasticsearch7
-  #   environment:
-  #     - discovery.type=single-node
-  #     - bootstrap.memory_lock=true
-  #     - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
-  #     - xpack.security.enabled=false
-  #   mem_limit: 2g
-  #   ulimits:
-  #     memlock:
-  #       soft: -1
-  #       hard: -1
-  #   volumes:
-  #     - data-elasticsearch7:/usr/share/elasticsearch/data
-  #   ports:
-  #     - "9200:9200"
-  #   restart: always
-  #   networks:
-  #     - net-all
-
-  ### Elasticsearch8 Container ###
-  elasticsearch8:
-    build: ./core/images/elasticsearch8
-    container_name: elasticsearch8
-    environment:
-      - discovery.type=single-node
-      - bootstrap.memory_lock=true
-      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
-      - xpack.security.enabled=false
-    mem_limit: 2g
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    volumes:
-      - data-elasticsearch8:/usr/share/elasticsearch/data
-    ports:
-      - "9200:9200"
-      # - "9300:9300"
-    restart: always
-    networks:
-      - net-all
-
-  ### Redis Container ###
-  redis:
-    build: ./core/images/redis
-    container_name: redis
-    volumes:
-      - data-redis:/data
-    ports:
-      - "6379:6379"
-    restart: always
-    networks:
-      - net-all
-
-  ### Rabbitmq Container ###
-  rabbitmq:
-    build: ./core/images/rabbitmq
-    container_name: rabbitmq
-    volumes:
-      - data-rabbitmq:/data
-    ports:
-      - "15672:15672"
-      - "5672:5672"
-    restart: always
-    environment:
-      - RABBITMQ_DEFAULT_USER=root
-      - RABBITMQ_DEFAULT_PASS=123456
-    networks:
-      - net-all
 
 ### Networks ###
 networks:
@@ -188,17 +236,17 @@ networks:
 
 ### Volumes ###
 volumes:
-  data-mariadb:
-    driver: local
   data-mysql80:
     driver: local
   data-redis:
     driver: local
   data-rabbitmq:
     driver: local
-  data-opensearch:
-    driver: local
   data-elasticsearch7:
     driver: local
-  data-elasticsearch8:
-    driver: local
+  # data-elasticsearch8:
+  #   driver: local
+  # data-opensearch:
+  #   driver: local
+  # data-mariadb:
+  #   driver: local
